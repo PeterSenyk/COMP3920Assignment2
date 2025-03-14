@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Chat Messaging - Home</title>
+    <link rel="stylesheet" href="bulma.min.css">
+    <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
+</head>
+<body>
+<section class="hero is-primary is-fullheight">
+    <div class="hero-body">
+        <div class="container has-text-centered">
+            <h1 class="title">Welcome to Chat Messaging</h1>
+            <h2 class="subtitle">Connect with your friends in real-time</h2>
+
+            <div class="box has-background-white-ter">
+                <h3 class="title is-4">Login</h3>
+
+                <% if (locals.errorMessage) { %>
+                    <div class="notification is-danger">
+                        <%= errorMessage %>
+                    </div>
+                <% } %>
+
+                <form action="/login" method="post">
+                    <div class="field">
+                        <label class="label">Username</label>
+                        <div class="control has-icons-left">
+                            <input class="input" type="text" name="username" placeholder="Enter your username" required>
+                            <span class="icon is-small is-left">
+                                    <i class="fas fa-user"></i>
+                                </span>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label">Password</label>
+                        <div class="control has-icons-left">
+                            <input class="input" type="password" name="password" placeholder="Enter your password" required>
+                            <span class="icon is-small is-left">
+                                    <i class="fas fa-lock"></i>
+                                </span>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <button class="button is-primary is-fullwidth">Login</button>
+                    </div>
+                </form>
+
+                <p class="has-text-centered">Don't have an account? <a href="/signup">Sign Up</a></p>
+            </div>
+        </div>
+    </div>
+</section>
+</body>
+</html>
