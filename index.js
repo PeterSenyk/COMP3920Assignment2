@@ -1,16 +1,21 @@
 require("dotenv").config();
 const express = require("express");
-const { Sequelize, DataTypes } = require("sequelize");
-const bcrypt = require("bcryptjs");
+const app = express();
 const session = require("express-session");
 const bodyParser = require("body-parser");
-const router = require('./routes/router');
+const router = require("./routes/router");
+const sequelize = require("./config/database"); // Use external DB config
 const port = process.env.PORT || 3000;
+const path = require("path");
+// Serve static files from the 'public' directory
+app.use(express.static(path.join(__dirname, "public")));
 
-const app = express();
+// Ensure the "public" directory exists
+console.log("Serving static files from:", path.join(__dirname, "public"));
+
+
+// Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
-
-// Initialize Session
 app.use(
     session({
         secret: "mysecretkey",
@@ -19,36 +24,18 @@ app.use(
     })
 );
 
-// Initialize Sequelize
-const sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASS, {
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
-    dialect: "mysql",
-    logging: false,
-});
+// Set EJS as the View Engine
+app.set("view engine", "ejs");
+// app.set("views", path.join(__dirname, "views")); // Ensure Express knows where to look for views
 
-// Define User Model
-const User = sequelize.define("User", {
-    username: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-    },
-    password: {
-        type: DataTypes.STRING,
-        allowNull: false,
-    },
-});
-
-// Sync Database
+// Sync database (ensures tables are created)
 sequelize
     .sync()
-    .then(() => console.log("Database & tables created!"))
+    .then(() => console.log("Database & tables synced"))
     .catch((err) => console.error("Error syncing database:", err));
-
 
 // Use the router for handling routes
 app.use("/", router);
 
 // Start server
-app.listen(port, () => console.log("Server running on port "+port));
+app.listen(port, () => console.log(`Server running on port ${port}`));

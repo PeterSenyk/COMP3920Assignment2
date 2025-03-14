@@ -8,22 +8,29 @@ router.get("/", (req, res) => {
     res.render("home"); // Render home.ejs
 });
 
-// Login Page
+// Login Page - Show login form
 router.get("/login", (req, res) => {
-    res.render("login"); // Render login.ejs
+    res.render("login", { errorMessage: null }); // Ensure errorMessage is always defined
 });
 
-// Handle Login
+// Handle Login Form Submission
 router.post("/login", async (req, res) => {
     try {
         const { username, password } = req.body;
         const user = await User.findOne({ where: { username } });
-        if (!user) return res.render("login", { errorMessage: "Invalid credentials" });
 
-        const match = await bcrypt.compare(password, user.password);
-        if (!match) return res.render("login", { errorMessage: "Invalid credentials" });
+        if (!user) {
+            return res.render("login", { errorMessage: "Invalid credentials" });
+        }
 
-        req.session.username = username;
+        const match = await bcrypt.compare(password, user.password_hash);
+        if (!match) {
+            return res.render("login", { errorMessage: "Invalid credentials" });
+        }
+
+        req.session.username = user.username;
+        req.session.userId = user.user_id;
+
         res.redirect("/chat");
     } catch (error) {
         console.error("Login Error:", error);
@@ -31,25 +38,34 @@ router.post("/login", async (req, res) => {
     }
 });
 
-// Signup Page
+// Signup Page - Show signup form
 router.get("/signup", (req, res) => {
-    res.render("signup"); // Render signup.ejs
+    res.render("signup", { errorMessage: null }); // Ensure errorMessage is always passed
 });
 
-// Handle Signup
+// Handle Signup Form Submission
 router.post("/signup", async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { username, email, password } = req.body; // ✅ Get email from the form
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        await User.create({ username, password: hashedPassword });
+        // ✅ Ensure email is included when creating a new user
+        await User.create({ username, email, password_hash: hashedPassword });
 
         req.session.username = username;
         res.redirect("/chat");
     } catch (error) {
-        res.render("signup", { errorMessage: "Username already exists" });
+        console.error("Signup Error:", error);
+
+        if (error.name === "SequelizeUniqueConstraintError") {
+            return res.render("signup", { errorMessage: "Username or email already exists. Choose another." });
+        }
+
+        res.render("signup", { errorMessage: "Internal server error. Please try again." });
     }
 });
+
+
 
 // Chat Page (Protected Route)
 router.get("/chat", (req, res) => {
