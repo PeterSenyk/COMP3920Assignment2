@@ -1,18 +1,114 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <title>Chat</title>
-    <link rel="stylesheet" href="../public/bulma.min.css">
+    <link rel="stylesheet" href="/public/bulma.min.css">
+    <style>
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 2px solid #ddd;
+            background-color: #f5f5f5;
+        }
+        .main-content {
+            display: flex;
+            flex-grow: 1;
+        }
+        .rooms {
+            width: 25%;
+            border-right: 2px solid #ddd;
+            padding: 15px;
+            overflow-y: auto;
+            height: calc(100vh - 50px);
+        }
+        .chat-box-container {
+            flex-grow: 1;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 50px);
+        }
+        #chat-box {
+            flex-grow: 1;
+            overflow-y: scroll;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: #f8f9fa;
+        }
+        #chat-form {
+            display: flex;
+        }
+        #chat-form input {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+    </style>
 </head>
 <body>
-<div class="container">
-    <h2 class="title">Welcome, <%= username %></h2>
-    <div id="chat-box" class="box" style="height: 400px; overflow-y: scroll;"></div>
-    <form action="/sendMessage" method="POST">
-        <input type="text" name="message" placeholder="Type a message..." required>
-        <button type="submit" class="button is-primary">Send</button>
-    </form>
-    <a href="/logout" class="button is-danger">Logout</a>
+
+<div class="chat-container">
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <h2>Welcome, <%= username %></h2>
+        <form action="/createRoom" method="POST">
+            <input type="text" name="roomName" placeholder="Enter room name" required>
+            <button type="submit" class="button is-success">Create Room</button>
+        </form>
+    </div>
+
+    <div class="main-content">
+        <!-- Room Selection (Left Sidebar) -->
+        <div class="rooms">
+            <h3 class="subtitle">Your Rooms</h3>
+            <ul>
+                <% if (typeof rooms !== "undefined" && rooms.length > 0) { %>
+                    <% rooms.forEach(room => { %>
+                        <li>
+                            <a href="/room/<%= room.room_id %>"><%= room.name %></a>
+                        </li>
+                    <% }) %>
+                <% } else { %>
+                    <p>You are not part of any rooms yet.</p>
+                <% } %>
+            </ul>
+        </div>
+
+        <!-- Chat Box (Right Side) -->
+        <div class="chat-box-container">
+            <div id="chat-box" class="box">
+                <% if (messages && messages.length > 0) { %>
+                    <% messages.forEach(message => { %>
+                        <div class="message">
+                            <strong><%= message.RoomUser.User.username %></strong>:
+                            <%= message.text %>
+                            <span class="timestamp">(<%= message.sent_datetime %>)</span>
+                        </div>
+                    <% }) %>
+                <% } else { %>
+                    <p>No messages yet. Start the conversation!</p>
+                <% } %>
+            </div>
+
+            <!-- Chat Input Form -->
+            <% if (typeof room_id !== "undefined" && room_id) { %>
+                <form id="chat-form" action="/sendMessage" method="POST">
+                    <input type="hidden" name="roomId" value="<%= room_id %>">
+                    <input type="text" name="message" placeholder="Type a message..." required>
+                    <button type="submit" class="button is-primary">Send</button>
+                </form>
+            <% } else { %>
+                <p>Select a room to start chatting.</p>
+            <% } %>
+        </div>
+    </div>
 </div>
+
 </body>
 </html>

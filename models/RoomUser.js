@@ -12,7 +12,13 @@ const RoomUser = sequelize.define("RoomUser", {
     timestamps: false,
 });
 
+//  Fix Associations
+Room.hasMany(RoomUser, { foreignKey: "room_id" });
+RoomUser.belongsTo(Room, { foreignKey: "room_id" });
+
 User.belongsToMany(Room, { through: RoomUser, foreignKey: "user_id" });
 Room.belongsToMany(User, { through: RoomUser, foreignKey: "room_id" });
+
+RoomUser.belongsTo(User, { foreignKey: "user_id" });
 
 module.exports = RoomUser;

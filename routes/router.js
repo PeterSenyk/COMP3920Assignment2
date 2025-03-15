@@ -1,30 +1,26 @@
+const { Op } = require("sequelize");
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
-const User = require("../models/User"); // Sequelize User model
+const { User, Room, RoomUser, Message } = require("../models");
 
 // Home Page
 router.get("/", (req, res) => {
-    res.render("home"); // Render home.ejs
+    res.render("home");
 });
 
-// Login Page - Show login form
+// Login Page
 router.get("/login", (req, res) => {
-    res.render("login", { errorMessage: null }); // Ensure errorMessage is always defined
+    res.render("login", { errorMessage: null });
 });
 
-// Handle Login Form Submission
+// Handle Login
 router.post("/login", async (req, res) => {
     try {
         const { username, password } = req.body;
         const user = await User.findOne({ where: { username } });
 
-        if (!user) {
-            return res.render("login", { errorMessage: "Invalid credentials" });
-        }
-
-        const match = await bcrypt.compare(password, user.password_hash);
-        if (!match) {
+        if (!user || !(await bcrypt.compare(password, user.password_hash))) {
             return res.render("login", { errorMessage: "Invalid credentials" });
         }
 
@@ -38,39 +34,112 @@ router.post("/login", async (req, res) => {
     }
 });
 
-// Signup Page - Show signup form
+// Signup Page
 router.get("/signup", (req, res) => {
-    res.render("signup", { errorMessage: null }); // Ensure errorMessage is always passed
+    res.render("signup", { errorMessage: null });
 });
 
-// Handle Signup Form Submission
+// Handle Signup
 router.post("/signup", async (req, res) => {
     try {
-        const { username, email, password } = req.body; // ✅ Get email from the form
+        const { username, email, password } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // ✅ Ensure email is included when creating a new user
         await User.create({ username, email, password_hash: hashedPassword });
 
         req.session.username = username;
         res.redirect("/chat");
     } catch (error) {
         console.error("Signup Error:", error);
-
-        if (error.name === "SequelizeUniqueConstraintError") {
-            return res.render("signup", { errorMessage: "Username or email already exists. Choose another." });
-        }
-
-        res.render("signup", { errorMessage: "Internal server error. Please try again." });
+        res.render("signup", { errorMessage: "Username or email already exists." });
     }
 });
 
-
-
-// Chat Page (Protected Route)
-router.get("/chat", (req, res) => {
+// Chat Page - Fetch Rooms
+router.get("/chat", async (req, res) => {
     if (!req.session.username) return res.redirect("/login");
-    res.render("chat", { username: req.session.username });
+
+    try {
+        const user = await User.findOne({ where: { username: req.session.username } });
+        if (!user) return res.redirect("/login");
+
+        const userRooms = await Room.findAll({
+            where: {
+                room_id: {
+                    [Op.in]: (await RoomUser.findAll({
+                        attributes: ["room_id"],
+                        where: { user_id: user.user_id }
+                    })).map(roomUser => roomUser.room_id)
+                }
+            }
+        });
+
+        res.render("chat", { username: req.session.username, rooms: userRooms, messages: [], room_id: null });
+    } catch (error) {
+        console.error("Error fetching rooms:", error);
+        res.render("chat", { username: req.session.username, rooms: [], messages: [], room_id: null });
+    }
+});
+
+// Room Chat Page - Fetch Messages
+router.get("/room/:roomId", async (req, res) => {
+    if (!req.session.username) return res.redirect("/login");
+
+    try {
+        const user = await User.findOne({ where: { username: req.session.username } });
+        if (!user) return res.redirect("/login");
+
+        const room = await Room.findOne({ where: { room_id: req.params.roomId } });
+        if (!room) return res.status(404).send("Room not found");
+
+        const messages = await Message.findAll({
+            where: { room_id: req.params.roomId },
+            include: [{ model: RoomUser, include: [User] }],
+            order: [["sent_datetime", "ASC"]]
+        });
+
+        res.render("chat", { username: req.session.username, room_id: req.params.roomId, rooms: [], room, messages });
+    } catch (error) {
+        console.error("Error fetching messages:", error);
+        res.render("chat", { username: req.session.username, room_id: null, rooms: [], room: null, messages: [] });
+    }
+});
+
+// Send Message
+router.post("/sendMessage", async (req, res) => {
+    if (!req.session.username) return res.redirect("/login");
+
+    try {
+        const { message, roomId } = req.body;
+        const user = await User.findOne({ where: { username: req.session.username } });
+        if (!user) return res.redirect("/login");
+
+        await Message.create({ room_id: roomId, text: message });
+
+        res.redirect(`/room/${roomId}`);
+    } catch (error) {
+        console.error("Error sending message:", error);
+        res.status(500).send("Internal server error");
+    }
+});
+
+// Create Room and Add Creator
+router.post("/createRoom", async (req, res) => {
+    if (!req.session.username) return res.redirect("/login");
+
+    try {
+        const { roomName } = req.body;
+        const user = await User.findOne({ where: { username: req.session.username } });
+        if (!user) return res.redirect("/login");
+
+        const newRoom = await Room.create({ name: roomName });
+        await RoomUser.create({ user_id: user.user_id, room_id: newRoom.room_id });
+
+        res.redirect("/chat");
+    } catch (error) {
+        console.error("Error creating room:", error);
+        res.redirect("/chat");
+    }
 });
 
 // Logout
@@ -78,5 +147,4 @@ router.get("/logout", (req, res) => {
     req.session.destroy(() => res.redirect("/"));
 });
 
-// Export Router
 module.exports = router;
