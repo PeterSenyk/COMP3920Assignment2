@@ -63,7 +63,6 @@ router.get("/chat", async (req, res) => {
         const user = await User.findOne({ where: { username: req.session.username } });
         if (!user) return res.redirect("/login");
 
-        // Get user's rooms and their last_read_message_id
         const userRoomsData = await RoomUser.findAll({
             where: { user_id: user.user_id },
             attributes: ["room_id", "last_read_message_id", "room_user_id"]
@@ -78,11 +77,9 @@ router.get("/chat", async (req, res) => {
             });
         }
 
-        // Get Room details
         const roomIds = userRoomsData.map(roomUser => roomUser.room_id);
         const userRooms = await Room.findAll({ where: { room_id: roomIds } });
 
-        // Attach unread message count to each room
         for (let room of userRooms) {
             const roomUser = userRoomsData.find(r => r.room_id === room.room_id);
 
@@ -91,15 +88,23 @@ router.get("/chat", async (req, res) => {
                 continue;
             }
 
-            // Count messages newer than last_read_message_id
+            // ✅ Fix: Get ALL `room_user_id`s in the room
+            const roomUserIds = (await RoomUser.findAll({
+                where: { room_id: room.room_id },
+                attributes: ["room_user_id"]
+            })).map(r => r.room_user_id);
+
+            // ✅ Fix: Count messages where `room_user_id` is ANY in this room
             const unreadMessages = await Message.count({
                 where: {
-                    room_user_id: roomUser.room_user_id,
+                    room_user_id: { [Op.in]: roomUserIds },  // Count all users in room
                     message_id: { [Op.gt]: roomUser.last_read_message_id || 0 }
                 }
             });
 
-            room.dataValues.unreadMessages = unreadMessages;
+            room.unreadMessages = unreadMessages;
+
+            console.log(`🔎 Room: ${room.name} (ID: ${room.room_id}) - Unread Messages: ${unreadMessages}, Last Read ID: ${roomUser.last_read_message_id}`);
         }
 
         res.render("chat", {
@@ -126,51 +131,51 @@ router.get("/room/:roomId", async (req, res) => {
         const room = await Room.findByPk(req.params.roomId);
         if (!room) return res.status(404).send("Room not found");
 
-        // Get user's rooms
         const userRoomsData = await RoomUser.findAll({
             where: { user_id: user.user_id },
-            attributes: ["room_id"]
+            attributes: ["room_id", "last_read_message_id"]
         });
 
         const roomIds = userRoomsData.map(r => r.room_id);
         const userRooms = await Room.findAll({ where: { room_id: roomIds } });
 
-        // Get all `room_user_id`s for this room
-        const roomUsers = await RoomUser.findAll({
-            where: { room_id: req.params.roomId },
-            attributes: ["room_user_id", "user_id"]
+        const roomUser = await RoomUser.findOne({
+            where: { user_id: user.user_id, room_id: req.params.roomId },
+            attributes: ["room_user_id", "last_read_message_id"]
         });
 
-        const roomUserIds = roomUsers.map(r => r.room_user_id);
+        console.log(`User's last read message ID in room ${req.params.roomId}:`, roomUser?.last_read_message_id);
 
-        // Fetch messages
+        const roomUserIds = (await RoomUser.findAll({ where: { room_id: req.params.roomId }, attributes: ["room_user_id"] })).map(r => r.room_user_id);
         const messages = await Message.findAll({
             where: { room_user_id: roomUserIds },
             include: [{ model: RoomUser, include: [{ model: User }] }],
             order: [["sent_datetime", "ASC"]]
         });
 
-        // Find latest message
         const lastMessage = await Message.findOne({
             where: { room_user_id: roomUserIds },
             order: [["sent_datetime", "DESC"]],
             attributes: ["message_id"]
         });
 
-        // Mark messages as read
-        if (lastMessage) {
-            await RoomUser.update(
-                { last_read_message_id: lastMessage.message_id },
-                { where: { user_id: user.user_id, room_id: req.params.roomId } }
-            );
-        }
+        console.log(`Latest message in room ${req.params.roomId}:`, lastMessage?.message_id);
 
         res.render("chat", {
             username: req.session.username,
             room_id: req.params.roomId,
             messages,
-            rooms: userRooms
+            rooms: userRooms,
+            last_read_message_id: roomUser?.last_read_message_id || 0
         });
+
+        if (lastMessage) {
+            await RoomUser.update(
+                { last_read_message_id: lastMessage.message_id },
+                { where: { user_id: user.user_id, room_id: req.params.roomId } }
+            );
+            console.log(`✅ Updated last_read_message_id for user ${user.user_id} in room ${req.params.roomId} to ${lastMessage.message_id}`);
+        }
 
     } catch (error) {
         console.error("Error fetching messages:", error);
