@@ -18,7 +18,7 @@ console.log("Serving static files from:", path.join(__dirname, "public"));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(
     session({
-        secret: "mysecretkey",
+        secret: process.env.SESSION_SECRET,
         resave: false,
         saveUninitialized: true,
     })

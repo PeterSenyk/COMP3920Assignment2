@@ -4,50 +4,122 @@
     <title>Chat</title>
     <link rel="stylesheet" href="/public/bulma.min.css">
     <style>
+        /* Main layout styling */
         .chat-container {
             display: flex;
             flex-direction: column;
-            height: 100vh;
+            height: 90vh; /* Adjusted height */
         }
+
         .top-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 10px;
-            border-bottom: 2px solid #ddd;
             background-color: #f5f5f5;
+            border-bottom: 2px solid #ddd;
         }
+
         .main-content {
             display: flex;
             flex-grow: 1;
         }
-        .rooms {
+
+        /* Room list sidebar */
+        .sidebar {
             width: 25%;
             border-right: 2px solid #ddd;
             padding: 15px;
             overflow-y: auto;
-            height: calc(100vh - 50px);
+            height: 85vh; /* Shorter height */
         }
+
+        .sidebar ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .sidebar ul li {
+            padding: 8px;
+            margin: 5px 0;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+
+        .sidebar ul li a {
+            text-decoration: none;
+            color: #333;
+            font-weight: bold;
+        }
+
+        .sidebar ul li a:hover {
+            background-color: #e0e0e0;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        .unread-badge {
+            background-color: red;
+            color: white;
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 12px;
+            margin-left: 8px;
+        }
+
+        /* Chat box */
         .chat-box-container {
             flex-grow: 1;
             padding: 15px;
             display: flex;
             flex-direction: column;
-            height: calc(100vh - 50px);
+            height: 85vh;
         }
+
         #chat-box {
             flex-grow: 1;
-            overflow-y: scroll;
+            overflow-y: auto;
             border: 1px solid #ddd;
             padding: 10px;
             background-color: #f8f9fa;
+            height: 65vh;
         }
+
+        /* Chat messages */
+        .message {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .message strong {
+            color: #007BFF;
+        }
+
+        .timestamp {
+            font-size: 12px;
+            color: gray;
+        }
+
+        /* Chat input */
         #chat-form {
             display: flex;
+            align-items: center;
+            padding-top: 5px;
+            background-color: #fff;
+            padding: 10px;
+            border-top: 2px solid #ddd;
         }
+
         #chat-form input {
             flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
             margin-right: 10px;
+        }
+
+        .button {
+            padding: 8px 15px;
         }
     </style>
 </head>
@@ -61,17 +133,33 @@
             <input type="text" name="roomName" placeholder="Enter room name" required>
             <button type="submit" class="button is-success">Create Room</button>
         </form>
+        <!-- Invite User Form (Appears Only Inside a Room) -->
+        <% if (typeof room_id !== "undefined" && room_id) { %>
+            <div class="invite-user">
+                <form action="/inviteUser" method="POST">
+                    <input type="hidden" name="roomId" value="<%= room_id %>">
+                    <input type="text" name="username" placeholder="Enter username to invite" required>
+                    <button type="submit" class="button is-info">Invite</button>
+                </form>
+            </div>
+        <% } %>
+        <a href="/logout" class="button is-danger">Logout</a>
     </div>
 
     <div class="main-content">
-        <!-- Room Selection (Left Sidebar) -->
-        <div class="rooms">
+        <!-- Room List (Sidebar) -->
+        <div class="sidebar">
             <h3 class="subtitle">Your Rooms</h3>
             <ul>
                 <% if (typeof rooms !== "undefined" && rooms.length > 0) { %>
                     <% rooms.forEach(room => { %>
                         <li>
-                            <a href="/room/<%= room.room_id %>"><%= room.name %></a>
+                            <a href="/room/<%= room.room_id %>">
+                                <%= room.name %>
+                                <% if (room.unreadMessages > 0) { %>
+                                    <span class="unread-badge"><%= room.unreadMessages %></span>
+                                <% } %>
+                            </a>
                         </li>
                     <% }) %>
                 <% } else { %>
@@ -80,7 +168,7 @@
             </ul>
         </div>
 
-        <!-- Chat Box (Right Side) -->
+        <!-- Chat Box -->
         <div class="chat-box-container">
             <div id="chat-box" class="box">
                 <% if (messages && messages.length > 0) { %>
