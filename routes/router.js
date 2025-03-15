@@ -55,7 +55,7 @@ router.post("/signup", async (req, res) => {
     }
 });
 
-// Chat Page - Fetch Rooms
+// Chat Page - Fetch Rooms & Unread Messages
 router.get("/chat", async (req, res) => {
     if (!req.session.username) return res.redirect("/login");
 
@@ -63,7 +63,7 @@ router.get("/chat", async (req, res) => {
         const user = await User.findOne({ where: { username: req.session.username } });
         if (!user) return res.redirect("/login");
 
-        // Get the user's rooms and their last_read_message_id
+        // Get user's rooms and their last_read_message_id
         const userRoomsData = await RoomUser.findAll({
             where: { user_id: user.user_id },
             attributes: ["room_id", "last_read_message_id", "room_user_id"]
@@ -78,7 +78,7 @@ router.get("/chat", async (req, res) => {
             });
         }
 
-        // Extract room IDs
+        // Get Room details
         const roomIds = userRoomsData.map(roomUser => roomUser.room_id);
         const userRooms = await Room.findAll({ where: { room_id: roomIds } });
 
@@ -91,11 +91,11 @@ router.get("/chat", async (req, res) => {
                 continue;
             }
 
-            // Count messages that are newer than the last_read_message_id
+            // Count messages newer than last_read_message_id
             const unreadMessages = await Message.count({
                 where: {
-                    room_user_id: roomUser.room_user_id,  // ✅ Correct field
-                    message_id: { [Op.gt]: roomUser.last_read_message_id || 0 }  // Ignore NULL values
+                    room_user_id: roomUser.room_user_id,
+                    message_id: { [Op.gt]: roomUser.last_read_message_id || 0 }
                 }
             });
 
@@ -126,7 +126,7 @@ router.get("/room/:roomId", async (req, res) => {
         const room = await Room.findByPk(req.params.roomId);
         if (!room) return res.status(404).send("Room not found");
 
-        // Get the user's rooms
+        // Get user's rooms
         const userRoomsData = await RoomUser.findAll({
             where: { user_id: user.user_id },
             attributes: ["room_id"]
@@ -143,14 +143,14 @@ router.get("/room/:roomId", async (req, res) => {
 
         const roomUserIds = roomUsers.map(r => r.room_user_id);
 
-        // Fetch messages using `room_user_id`
+        // Fetch messages
         const messages = await Message.findAll({
             where: { room_user_id: roomUserIds },
             include: [{ model: RoomUser, include: [{ model: User }] }],
             order: [["sent_datetime", "ASC"]]
         });
 
-        // Find the latest message in the room
+        // Find latest message
         const lastMessage = await Message.findOne({
             where: { room_user_id: roomUserIds },
             order: [["sent_datetime", "DESC"]],
@@ -169,62 +169,12 @@ router.get("/room/:roomId", async (req, res) => {
             username: req.session.username,
             room_id: req.params.roomId,
             messages,
-            rooms: userRooms  // ✅ Keep room list visible
+            rooms: userRooms
         });
 
     } catch (error) {
         console.error("Error fetching messages:", error);
         res.status(500).send("Internal server error");
-    }
-});
-
-
-
-// Send Message
-router.post("/sendMessage", async (req, res) => {
-    if (!req.session.username) return res.redirect("/login");
-
-    try {
-        const { message, roomId } = req.body;
-        const user = await User.findOne({ where: { username: req.session.username } });
-        if (!user) return res.redirect("/login");
-
-        // Find the user's `room_user_id` in the given room
-        const roomUser = await RoomUser.findOne({
-            where: { user_id: user.user_id, room_id: roomId }
-        });
-
-        if (!roomUser) return res.status(403).send("You are not part of this room.");
-
-        // Store message using `room_user_id`
-        await Message.create({
-            room_user_id: roomUser.room_user_id,
-            text: message
-        });
-
-        res.redirect(`/room/${roomId}`);
-    } catch (error) {
-        console.error("Error sending message:", error);
-        res.status(500).send("Internal server error");
-    }
-});
-
-// Create Room and Add Creator
-router.post("/createRoom", async (req, res) => {
-    if (!req.session.username) return res.redirect("/login");
-
-    try {
-        const { roomName } = req.body;
-        const user = await User.findOne({ where: { username: req.session.username } });
-        if (!user) return res.redirect("/login");
-
-        const newRoom = await Room.create({ name: roomName });
-        await RoomUser.create({ user_id: user.user_id, room_id: newRoom.room_id });
-
-        res.redirect("/chat");
-    } catch (error) {
-        console.error("Error creating room:", error);
-        res.redirect("/chat");
     }
 });
 
@@ -242,7 +192,6 @@ router.post("/inviteUser", async (req, res) => {
             return res.status(404).send("User not found.");
         }
 
-        // Check if user is already in the room
         const existingRoomUser = await RoomUser.findOne({
             where: { user_id: invitedUser.user_id, room_id: roomId }
         });
@@ -251,12 +200,38 @@ router.post("/inviteUser", async (req, res) => {
             return res.status(400).send("User is already in this room.");
         }
 
-        // Add user to the room
         await RoomUser.create({ user_id: invitedUser.user_id, room_id: roomId });
 
         res.redirect(`/room/${roomId}`);
     } catch (error) {
         console.error("Error inviting user:", error);
+        res.status(500).send("Internal server error");
+    }
+});
+
+// Send Message
+router.post("/sendMessage", async (req, res) => {
+    if (!req.session.username) return res.redirect("/login");
+
+    try {
+        const { message, roomId } = req.body;
+        const user = await User.findOne({ where: { username: req.session.username } });
+        if (!user) return res.redirect("/login");
+
+        const roomUser = await RoomUser.findOne({
+            where: { user_id: user.user_id, room_id: roomId }
+        });
+
+        if (!roomUser) return res.status(403).send("You are not part of this room.");
+
+        await Message.create({
+            room_user_id: roomUser.room_user_id,
+            text: message
+        });
+
+        res.redirect(`/room/${roomId}`);
+    } catch (error) {
+        console.error("Error sending message:", error);
         res.status(500).send("Internal server error");
     }
 });
