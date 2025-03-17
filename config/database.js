@@ -1,7 +1,8 @@
-const { Sequelize } = require("sequelize");
-require("dotenv").config(); // Load env
+// config/database.js
+require('dotenv').config();
+const { Sequelize } = require('sequelize');
 
-// Initialize Sequelize
+// Initialize Sequelize w/ environment variables or your local config
 const sequelize = new Sequelize({
     database: process.env.DB_NAME,
     username: process.env.DB_USER,
