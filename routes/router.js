@@ -102,7 +102,7 @@ router.get("/chat", async (req, res) => {
 
             room.unreadMessages = unreadMessages;
 
-            console.log(`🔎 Room: ${room.name} (ID: ${room.room_id}) - Unread Messages: ${unreadMessages}, Last Read ID: ${roomUser.last_read_message_id}`);
+            // console.log(`Room: ${room.name} (ID: ${room.room_id}) - Unread Messages: ${unreadMessages}, Last Read ID: ${roomUser.last_read_message_id}`);
         }
 
         res.render("chat", {
