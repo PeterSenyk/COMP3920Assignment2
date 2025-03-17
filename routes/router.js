@@ -293,6 +293,34 @@ router.post('/messages/:messageId/react', async (req, res) => {
     }
 });
 
+// Create a new room
+router.post('/createRoom', async (req, res) => {
+    try {
+        // Get the room name from the form submission
+        const { roomName } = req.body;
+
+        // Create a new Room (assuming the Room model has a 'name' field)
+        const room = await Room.create({ name: roomName });
+
+        // Optionally, add the current user to this room.
+        // This step ensures that the creator is automatically a member of the room.
+        const user = await User.findOne({ where: { username: req.session.username } });
+        if (user) {
+            await RoomUser.create({
+                user_id: user.user_id,
+                room_id: room.room_id
+            });
+        }
+
+        // Redirect the user to the new room's chat page
+        res.redirect(`/room/${room.room_id}`);
+    } catch (error) {
+        console.error("Error creating room:", error);
+        res.status(500).send("Internal Server Error");
+    }
+});
+
+
 // Logout
 router.get("/logout", (req, res) => {
     req.session.destroy(() => res.redirect("/"));
