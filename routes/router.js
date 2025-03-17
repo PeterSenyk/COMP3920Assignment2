@@ -43,8 +43,21 @@ router.get("/signup", (req, res) => {
 router.post("/signup", async (req, res) => {
     try {
         const { username, email, password } = req.body;
-        const hashedPassword = await bcrypt.hash(password, 10);
+        // Define a regex that checks:
+        // - At least one lowercase letter
+        // - At least one uppercase letter
+        // - At least one digit
+        // - At least one special character (non-word character)
+        // - At least 10 characters overall
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{10,}$/;
+        if (!passwordRegex.test(password)) {
+            return res.render("signup", {
+                errorMessage: "Password must be at least 10 characters long and include uppercase, lowercase, a number, and a symbol."
+            });
+        }
 
+        // Hash the password and create the user
+        const hashedPassword = await bcrypt.hash(password, 10);
         await User.create({ username, email, password_hash: hashedPassword });
 
         req.session.username = username;
