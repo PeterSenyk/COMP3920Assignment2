@@ -88,13 +88,11 @@ router.get("/chat", async (req, res) => {
                 continue;
             }
 
-            // ✅ Fix: Get ALL `room_user_id`s in the room
             const roomUserIds = (await RoomUser.findAll({
                 where: { room_id: room.room_id },
                 attributes: ["room_user_id"]
             })).map(r => r.room_user_id);
 
-            // ✅ Fix: Count messages where `room_user_id` is ANY in this room
             const unreadMessages = await Message.count({
                 where: {
                     room_user_id: { [Op.in]: roomUserIds },  // Count all users in room
@@ -174,7 +172,7 @@ router.get("/room/:roomId", async (req, res) => {
                 { last_read_message_id: lastMessage.message_id },
                 { where: { user_id: user.user_id, room_id: req.params.roomId } }
             );
-            console.log(`✅ Updated last_read_message_id for user ${user.user_id} in room ${req.params.roomId} to ${lastMessage.message_id}`);
+            console.log(`pdated last_read_message_id for user ${user.user_id} in room ${req.params.roomId} to ${lastMessage.message_id}`);
         }
 
     } catch (error) {
