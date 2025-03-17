@@ -2,7 +2,7 @@ const { Op } = require("sequelize");
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
-const { User, Room, RoomUser, Message } = require("../models");
+const { User, Room, RoomUser, Message, Emoji, MessageReaction } = require('../models');
 
 // Home Page
 router.get("/", (req, res) => {
@@ -119,65 +119,83 @@ router.get("/chat", async (req, res) => {
 });
 
 // Room Chat Page - Fetch Messages
-router.get("/room/:roomId", async (req, res) => {
-    if (!req.session.username) return res.redirect("/login");
+router.get('/room/:roomId', async (req, res) => {
+    // 1) Check login
+    if (!req.session.username) {
+        return res.redirect('/login');
+    }
 
     try {
+        // 2) Get the logged-in user
         const user = await User.findOne({ where: { username: req.session.username } });
-        if (!user) return res.redirect("/login");
+        if (!user) return res.redirect('/login');
 
-        const room = await Room.findByPk(req.params.roomId);
-        if (!room) return res.status(404).send("Room not found");
+        // 3) Get the requested room
+        const roomId = parseInt(req.params.roomId, 10);
+        const room = await Room.findByPk(roomId);
+        if (!room) {
+            return res.status(404).send('Room not found');
+        }
 
+        // 4) Ensure the user is in this room
+        const roomUser = await RoomUser.findOne({
+            where: { user_id: user.user_id, room_id: roomId },
+            attributes: ['room_user_id', 'last_read_message_id'],
+        });
+        if (!roomUser) {
+            return res.status(403).send('You are not part of this room');
+        }
+
+        // 5) Fetch all rooms for the sidebar
         const userRoomsData = await RoomUser.findAll({
             where: { user_id: user.user_id },
-            attributes: ["room_id", "last_read_message_id"]
+            attributes: ['room_id', 'last_read_message_id'],
         });
-
         const roomIds = userRoomsData.map(r => r.room_id);
         const userRooms = await Room.findAll({ where: { room_id: roomIds } });
 
-        const roomUser = await RoomUser.findOne({
-            where: { user_id: user.user_id, room_id: req.params.roomId },
-            attributes: ["room_user_id", "last_read_message_id"]
-        });
+        // 6) Get all RoomUser IDs for this room
+        const roomUserIds = (await RoomUser.findAll({
+            where: { room_id: roomId },
+            attributes: ['room_user_id'],
+        })).map(r => r.room_user_id);
 
-        console.log(`User's last read message ID in room ${req.params.roomId}:`, roomUser?.last_read_message_id);
-
-        const roomUserIds = (await RoomUser.findAll({ where: { room_id: req.params.roomId }, attributes: ["room_user_id"] })).map(r => r.room_user_id);
+        // 7) Fetch messages in this room including:
+        //    - The RoomUser (with the User info)
+        //    - Any associated Emojis (via MessageReaction)
         const messages = await Message.findAll({
-            where: { room_user_id: roomUserIds },
-            include: [{ model: RoomUser, include: [{ model: User }] }],
-            order: [["sent_datetime", "ASC"]]
+            where: { room_user_id: { [Op.in]: roomUserIds } },
+            order: [['sent_datetime', 'ASC']],
+            include: [
+                { model: RoomUser, include: [User] },
+                { model: Emoji, through: { attributes: ['user_id'] } },
+            ],
         });
 
-        const lastMessage = await Message.findOne({
-            where: { room_user_id: roomUserIds },
-            order: [["sent_datetime", "DESC"]],
-            attributes: ["message_id"]
-        });
-
-        console.log(`Latest message in room ${req.params.roomId}:`, lastMessage?.message_id);
-
-        res.render("chat", {
-            username: req.session.username,
-            room_id: req.params.roomId,
-            messages,
-            rooms: userRooms,
-            last_read_message_id: roomUser?.last_read_message_id || 0
-        });
-
+        // 8) Optionally update last_read_message_id for the user
+        const lastMessage = messages.length ? messages[messages.length - 1] : null;
         if (lastMessage) {
             await RoomUser.update(
                 { last_read_message_id: lastMessage.message_id },
-                { where: { user_id: user.user_id, room_id: req.params.roomId } }
+                { where: { user_id: user.user_id, room_id: roomId } }
             );
-            console.log(`pdated last_read_message_id for user ${user.user_id} in room ${req.params.roomId} to ${lastMessage.message_id}`);
         }
 
+        // 9) Fetch the full list of emojis for the reaction picker
+        const allEmojis = await Emoji.findAll();
+
+        // 10) Render the chat page once, passing all variables
+        return res.render('chat', {
+            username: req.session.username,
+            room_id: roomId,
+            rooms: userRooms,
+            messages,
+            last_read_message_id: roomUser.last_read_message_id || 0,
+            allEmojis,
+        });
     } catch (error) {
-        console.error("Error fetching messages:", error);
-        res.status(500).send("Internal server error");
+        console.error('Error fetching messages:', error);
+        return res.status(500).send('Internal server error');
     }
 });
 
@@ -236,6 +254,42 @@ router.post("/sendMessage", async (req, res) => {
     } catch (error) {
         console.error("Error sending message:", error);
         res.status(500).send("Internal server error");
+    }
+});
+
+
+router.post('/messages/:messageId/react', async (req, res) => {
+    try {
+        // Extract form data
+        const messageId = parseInt(req.params.messageId, 10);
+        const { emojiId, roomId } = req.body;
+        const userId = req.session.userId;  // assuming you store userId in session
+
+        // Optional: check that the message/emoji exist, or that user is allowed.
+        const message = await Message.findByPk(messageId);
+        if (!message) {
+            return res.status(404).send('Message not found');
+        }
+
+        // Usually you'd confirm `emojiId` is valid too:
+        const emoji = await Emoji.findByPk(emojiId);
+        if (!emoji) {
+            return res.status(404).send('Emoji not found');
+        }
+
+        // Create row in pivot table (MessageReaction)
+        // If you want "toggle" behavior, you'd check if row exists first, then remove.
+        await MessageReaction.create({
+            message_id: messageId,
+            emoji_id: emojiId,
+            user_id: userId,
+        });
+
+        // Redirect back to the room
+        return res.redirect(`/room/${roomId}`);
+    } catch (error) {
+        console.error('Reaction creation error:', error);
+        return res.status(500).send('Error adding reaction');
     }
 });
 
